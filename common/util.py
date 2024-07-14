@@ -23,6 +23,33 @@ def preprocess(text):
     return corpus, word_to_id, id_to_word
 
 
+def create_co_matrix(corpus, vocab_size, window_size=1):
+    '''동시발생 행렬 생성
+
+    :param corpus: 말뭉치(단어 ID 목록)
+    :param vocab_size: 어휘 수
+    :param window_size: 윈도우 크기(윈도우 크기가 1이면 타깃 단어 좌우 한 단어씩이 맥락에 포함)
+    :return: 동시발생 행렬
+    '''
+    corpus_size = len(corpus)
+    co_matrix = np.zeros((vocab_size, vocab_size), dtype=np.int32)
+
+    for idx, word_id in enumerate(corpus):
+        for i in range(1, window_size + 1):
+            left_idx = idx - i
+            right_idx = idx + i
+
+            if left_idx >= 0:
+                left_word_id = corpus[left_idx]
+                co_matrix[word_id, left_word_id] += 1
+
+            if right_idx < corpus_size:
+                right_word_id = corpus[right_idx]
+                co_matrix[word_id, right_word_id] += 1
+
+    return co_matrix
+
+
 def cos_similarity(x, y, eps=1e-8):
     '''코사인 유사도 산출
 
@@ -72,6 +99,31 @@ def most_similar(query, word_to_id, id_to_word, word_matrix, top=5):
             return
 
 
+def ppmi(C, verbose=False, eps = 1e-8):
+    '''PPMI(점별 상호정보량) 생성
+
+    :param C: 동시발생 행렬
+    :param verbose: 진행 상황을 출력할지 여부
+    :return:
+    '''
+    M = np.zeros_like(C, dtype=np.float32)
+    N = np.sum(C)
+    S = np.sum(C, axis=0)
+    total = C.shape[0] * C.shape[1]
+    cnt = 0
+
+    for i in range(C.shape[0]):
+        for j in range(C.shape[1]):
+            pmi = np.log2(C[i, j] + eps) + np.log2(N) - np.log2(S[j] + eps) - np.log2(S[i] + eps)
+            M[i, j] = max(0, pmi)
+
+            if verbose:
+                cnt += 1
+                if cnt % (total//100 + 1) == 0:
+                    print('%.1f%% 완료' % (100*cnt/total))
+    return M
+
+
 def convert_one_hot(corpus, vocab_size):
     '''원핫 표현으로 변환
 
@@ -94,58 +146,6 @@ def convert_one_hot(corpus, vocab_size):
                 one_hot[idx_0, idx_1, word_id] = 1
 
     return one_hot
-
-
-def create_co_matrix(corpus, vocab_size, window_size=1):
-    '''동시발생 행렬 생성
-
-    :param corpus: 말뭉치(단어 ID 목록)
-    :param vocab_size: 어휘 수
-    :param window_size: 윈도우 크기(윈도우 크기가 1이면 타깃 단어 좌우 한 단어씩이 맥락에 포함)
-    :return: 동시발생 행렬
-    '''
-    corpus_size = len(corpus)
-    co_matrix = np.zeros((vocab_size, vocab_size), dtype=np.int32)
-
-    for idx, word_id in enumerate(corpus):
-        for i in range(1, window_size + 1):
-            left_idx = idx - i
-            right_idx = idx + i
-
-            if left_idx >= 0:
-                left_word_id = corpus[left_idx]
-                co_matrix[word_id, left_word_id] += 1
-
-            if right_idx < corpus_size:
-                right_word_id = corpus[right_idx]
-                co_matrix[word_id, right_word_id] += 1
-
-    return co_matrix
-
-
-def ppmi(C, verbose=False, eps = 1e-8):
-    '''PPMI(점별 상호정보량) 생성
-
-    :param C: 동시발생 행렬
-    :param verbose: 진행 상황을 출력할지 여부
-    :return:
-    '''
-    M = np.zeros_like(C, dtype=np.float32)
-    N = np.sum(C)
-    S = np.sum(C, axis=0)
-    total = C.shape[0] * C.shape[1]
-    cnt = 0
-
-    for i in range(C.shape[0]):
-        for j in range(C.shape[1]):
-            pmi = np.log2(C[i, j] * N / (S[j]*S[i]) + eps)
-            M[i, j] = max(0, pmi)
-
-            if verbose:
-                cnt += 1
-                if cnt % (total//100 + 1) == 0:
-                    print('%.1f%% 완료' % (100*cnt/total))
-    return M
 
 
 def create_contexts_target(corpus, window_size=1):
